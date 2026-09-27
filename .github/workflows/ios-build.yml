@@ -86,6 +86,26 @@ jobs:
           else
             echo "::warning title=Extension::No app extensions embedded in $(basename "$APP") (app minOS=$APP_MIN)"
           fi
+
+          # An unsigned build carries no entitlements, so sideloaders never learn the app and widget
+          # share an App Group. Ad-hoc sign (inside out) with the entitlements baked in; the sideloader
+          # replaces this signature but reads the entitlements from it.
+          APP_ENT=$(ls ios/*/*.entitlements | head -1)
+          WIDGET_ENT=$(find ios/.targets -name '*.entitlements' | head -1)
+          echo "App entitlements: $APP_ENT"; cat "$APP_ENT"
+          echo "Widget entitlements: $WIDGET_ENT"; cat "$WIDGET_ENT"
+          find "$APP/Frameworks" \( -name '*.framework' -o -name '*.dylib' \) -maxdepth 1 2>/dev/null | while read -r FW; do
+            codesign --force --sign - "$FW"
+          done
+          for EXT in "$APP"/PlugIns/*.appex; do
+            codesign --force --sign - --entitlements "$WIDGET_ENT" "$EXT"
+            GROUPS=$(codesign -d --entitlements - --xml "$EXT" 2>/dev/null | grep -o 'group\.[^<]*' | tr '\n' ' ')
+            echo "::notice title=Signed extension::$(basename "$EXT") app groups: ${GROUPS:-NONE}"
+          done
+          codesign --force --sign - --entitlements "$APP_ENT" "$APP"
+          GROUPS=$(codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -o 'group\.[^<]*' | tr '\n' ' ')
+          echo "::notice title=Signed app::$(basename "$APP") app groups: ${GROUPS:-NONE}"
+
           mkdir -p dist/Payload
           cp -R "$APP" dist/Payload/
           cd dist && zip -qr ToDo.ipa Payload
