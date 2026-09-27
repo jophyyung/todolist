@@ -49,7 +49,8 @@ struct Snapshot: Decodable {
 
   /// Keep in step with appGroupCandidates in src/widget/app-group.ts.
   static func candidateGroups() -> [String] {
-    var groups = groupsInProfile().filter { $0.hasPrefix(appGroup) }
+    // Take every granted group as-is: sideloaders don't agree on a naming scheme.
+    var groups = groupsInProfile()
     let baseBundle = "com.jophy.todolist"
     if var appId = Bundle.main.bundleIdentifier {
       if appId.hasSuffix(".widget") { appId = String(appId.dropLast(".widget".count)) }
@@ -61,6 +62,12 @@ struct Snapshot: Decodable {
     groups.append(appGroup)
     var seen = Set<String>()
     return groups.filter { seen.insert($0).inserted }
+  }
+
+  /// Shown instead of tasks when no snapshot is found, to make storage problems diagnosable.
+  static var missingDataHint: String {
+    let granted = groupsInProfile()
+    return granted.isEmpty ? "No data: widget has no shared storage" : "No data yet in \(granted.joined(separator: ", "))"
   }
 
   /// App Groups granted by this extension's provisioning profile.
@@ -210,7 +217,7 @@ struct RectangularView: View {
       .widgetAccentable()
 
       if entry.snapshot == nil {
-        Text("Open the app once to set up").font(.system(size: 13))
+        Text(Snapshot.missingDataHint).font(.system(size: 11)).lineLimit(2)
       } else if entry.list.isEmpty {
         Text(entry.wateredToday ? "All clear. Plant watered." : "Water your plant today").font(.system(size: 13))
       } else {
@@ -278,7 +285,7 @@ struct SmallView: View {
       }
       if entry.list.isEmpty {
         Spacer()
-        Text(entry.snapshot == nil ? "Open the app once to set up" : "Nothing to do")
+        Text(entry.snapshot == nil ? Snapshot.missingDataHint : "Nothing to do")
           .font(.system(size: 13))
           .foregroundStyle(.secondary)
         Spacer()

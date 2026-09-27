@@ -15,7 +15,8 @@ export function groupsInProfile(profileText: string): string[] {
  * then one derived from a renamed bundle id, then the original.
  */
 export function appGroupCandidates(profileGroups: string[], bundleId: string | null): string[] {
-  const out = profileGroups.filter((g) => g.startsWith(BASE_APP_GROUP));
+  // Take every granted group as-is: sideloaders don't agree on a naming scheme.
+  const out = [...profileGroups];
   if (bundleId && bundleId !== BASE_BUNDLE_ID) {
     if (bundleId.startsWith(`${BASE_BUNDLE_ID}.`)) out.push(BASE_APP_GROUP + bundleId.slice(BASE_BUNDLE_ID.length));
     out.push(`group.${bundleId}`);

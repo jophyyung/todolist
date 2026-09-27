@@ -423,3 +423,12 @@ describe('widget app group discovery', () => {
     expect(latin1(new Uint8Array([0x3c, 0x61, 0x3e, 0xff, 0x00]))).toBe('<a>ÿ\u0000');
   });
 });
+
+describe('widget app group discovery with other naming schemes', () => {
+  it('keeps granted groups that do not start with the original name', () => {
+    expect(appGroupCandidates(['group.XFS2MURF6G.com.jophy.todolist'], 'com.jophy.todolist')).toEqual([
+      'group.XFS2MURF6G.com.jophy.todolist',
+      'group.com.jophy.todolist',
+    ]);
+  });
+});
