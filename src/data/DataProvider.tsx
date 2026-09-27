@@ -18,6 +18,8 @@ import {
   type TaskInput,
 } from '@/lib/types';
 import { ACTION_DONE, ACTION_LOG_30, ACTION_SNOOZE, applyPlan, configureNotifications, ensurePermission } from '@/notifications/scheduler';
+import { buildSnapshot } from '@/widget/snapshot';
+import { syncWidget } from '@/widget/sync';
 
 type DataContextValue = {
   tasks: Task[];
@@ -139,6 +141,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       appState.remove();
     };
   }, [reload, handleResponse]);
+
+  // Keep the lock-screen widget in step with the data (no-op in Expo Go).
+  useEffect(() => {
+    if (!ready) return;
+    const now = Date.now();
+    const garden = evaluateGarden({ log: taskLog, tasks, sessions, courses, startedAt: settings.plantStartedAt, now });
+    syncWidget(buildSnapshot(tasks, courses, sessions, garden, now));
+  }, [ready, tasks, courses, sessions, taskLog, settings.plantStartedAt]);
 
   // Recompute every pending notification whenever the data changes (debounced).
   const planTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

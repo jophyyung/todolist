@@ -10,7 +10,12 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.jophy.todolist",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.jophy.todolist"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -36,7 +41,8 @@
         }
       ],
       "expo-sqlite",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,
