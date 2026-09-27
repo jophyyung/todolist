@@ -99,17 +99,22 @@ jobs:
           done
           for EXT in "$APP"/PlugIns/*.appex; do
             codesign --force --sign - --entitlements "$WIDGET_ENT" "$EXT"
-            GROUPS=$(codesign -d --entitlements - --xml "$EXT" 2>/dev/null | grep -o 'group\.[^<]*' | tr '\n' ' ')
-            echo "::notice title=Signed extension::$(basename "$EXT") app groups: ${GROUPS:-NONE}"
           done
           codesign --force --sign - --entitlements "$APP_ENT" "$APP"
-          GROUPS=$(codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -o 'group\.[^<]*' | tr '\n' ' ')
-          echo "::notice title=Signed app::$(basename "$APP") app groups: ${GROUPS:-NONE}"
 
           mkdir -p dist/Payload
           cp -R "$APP" dist/Payload/
           cd dist && zip -qr ToDo.ipa Payload
           ls -lh ToDo.ipa
+
+      # Report which App Groups ended up in the signed binaries (shown on the run summary).
+      - name: Verify entitlements
+        run: |
+          APP=$(ls -d dist/Payload/*.app | head -1)
+          for BIN in "$APP" "$APP"/PlugIns/*.appex; do
+            FOUND=$(codesign -d --entitlements - --xml "$BIN" 2>&1 | grep -o 'group\.[A-Za-z0-9.-]*' | sort -u | tr '\n' ' ' || true)
+            echo "::warning title=Entitlements::$(basename "$BIN") app groups: ${FOUND:-NONE}"
+          done
 
       - uses: actions/upload-artifact@v5
         with:
