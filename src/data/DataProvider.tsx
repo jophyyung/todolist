@@ -12,12 +12,16 @@ import {
   DEFAULT_SETTINGS,
   type Course,
   type CourseInput,
+  type Run,
+  type RunGoalKind,
+  type RunInput,
   type Settings,
   type StudySession,
   type Task,
   type TaskInput,
 } from '@/lib/types';
 import { ACTION_DONE, ACTION_LOG_30, ACTION_SNOOZE, applyPlan, configureNotifications, ensurePermission } from '@/notifications/scheduler';
+import { runGoalChange, runGoalFrom } from '@/running/stats';
 import { buildSnapshot } from '@/widget/snapshot';
 import { syncWidget } from '@/widget/sync';
 
@@ -39,6 +43,12 @@ type DataContextValue = {
   removeCourse(id: number): Promise<void>;
   logSession(courseId: number, minutes: number): Promise<void>;
   removeSession(id: number): Promise<void>;
+  /** Runs, newest first. */
+  runs: Run[];
+  addRun(input: RunInput): Promise<void>;
+  editRun(id: number, input: RunInput): Promise<void>;
+  removeRun(id: number): Promise<void>;
+  setRunGoal(kind: RunGoalKind, value: number): Promise<void>;
   updateSettings(patch: Partial<Settings>): Promise<void>;
   requestNotifications(): Promise<boolean>;
 };
@@ -60,6 +70,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const [taskLog, setTaskLog] = useState<TaskLogEntry[]>([]);
+  const [runs, setRuns] = useState<Run[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [notificationsAllowed, setNotificationsAllowed] = useState(false);
 
@@ -70,16 +81,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await db.saveSettings(sqlite, { plantStartedAt: Date.now() });
       st = await db.getSettings(sqlite);
     }
-    const [t, c, s, log] = await Promise.all([
+    const [t, c, s, log, r] = await Promise.all([
       db.getTasks(sqlite),
       db.getCourses(sqlite),
       db.getSessions(sqlite, 0),
       db.getTaskLog(sqlite),
+      db.getRuns(sqlite),
     ]);
     setTasks(t);
     setCourses(c);
     setSessions(s);
     setTaskLog(log);
+    setRuns(r);
     setSettings(st);
   }, [sqlite]);
 
@@ -146,9 +159,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     const now = Date.now();
-    const garden = evaluateGarden({ log: taskLog, tasks, sessions, courses, startedAt: settings.plantStartedAt, now });
+    const garden = evaluateGarden({
+      log: taskLog,
+      tasks,
+      sessions,
+      courses,
+      runs,
+      runGoal: runGoalFrom(settings),
+      startedAt: settings.plantStartedAt,
+      now,
+    });
     syncWidget(buildSnapshot(tasks, courses, sessions, garden, now));
-  }, [ready, tasks, courses, sessions, taskLog, settings.plantStartedAt]);
+  }, [ready, tasks, courses, sessions, taskLog, runs, settings]);
 
   // Recompute every pending notification whenever the data changes (debounced).
   const planTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -157,12 +179,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (planTimer.current) clearTimeout(planTimer.current);
     planTimer.current = setTimeout(() => {
       const now = Date.now();
-      const { streak } = evaluateGarden({ log: taskLog, tasks, sessions, courses, startedAt: settings.plantStartedAt, now });
-      applyPlan({ tasks, courses, sessions, settings, now, log: taskLog, streak }).catch((e) =>
+      const runGoal = runGoalFrom(settings);
+      const { streak } = evaluateGarden({ log: taskLog, tasks, sessions, courses, runs, runGoal, startedAt: settings.plantStartedAt, now });
+      applyPlan({ tasks, courses, sessions, settings, now, log: taskLog, streak, runs, runGoal }).catch((e) =>
         console.warn('Failed to schedule notifications', e),
       );
     }, 300);
-  }, [ready, notificationsAllowed, tasks, courses, sessions, taskLog, settings]);
+  }, [ready, notificationsAllowed, tasks, courses, sessions, taskLog, runs, settings]);
 
   const value = useMemo<DataContextValue>(() => {
     const mutate = async (fn: () => Promise<unknown>, animate = true) => {
@@ -175,6 +198,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       courses,
       sessions,
       taskLog,
+      runs,
       settings,
       notificationsAllowed,
       addTask: (input) => mutate(() => db.insertTask(sqlite, input)),
@@ -208,6 +232,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
           await db.insertSession(sqlite, courseId, minutes, Date.now());
         }),
       removeSession: (id) => mutate(() => db.deleteSession(sqlite, id)),
+      addRun: (input) =>
+        mutate(async () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          await db.insertRun(sqlite, input);
+        }),
+      editRun: (id, input) => mutate(() => db.updateRun(sqlite, id, input)),
+      removeRun: (id) => mutate(() => db.deleteRun(sqlite, id)),
+      setRunGoal: (kind, value) => mutate(() => db.saveSettings(sqlite, runGoalChange(settings, kind, value, Date.now())), false),
       updateSettings: (patch) => mutate(() => db.saveSettings(sqlite, patch), false),
       async requestNotifications() {
         const granted = await ensurePermission();
@@ -215,7 +247,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return granted;
       },
     };
-  }, [tasks, courses, sessions, taskLog, settings, notificationsAllowed, sqlite, reload, completeOrRoll]);
+  }, [tasks, courses, sessions, taskLog, runs, settings, notificationsAllowed, sqlite, reload, completeOrRoll]);
 
   // Screens seed local form state from settings, so wait for the first load (the splash covers it).
   return <DataContext.Provider value={value}>{ready ? children : null}</DataContext.Provider>;

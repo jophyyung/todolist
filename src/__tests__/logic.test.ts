@@ -1,10 +1,27 @@
 /// <reference types="jest" />
 import { addDays, atTime, groupTasks, HOUR, nextOccurrence, startOfWeek } from '@/lib/dates';
 import { parseQuickAdd } from '@/lib/quickAdd';
-import type { Course, StudySession, Task } from '@/lib/types';
+import type { Course, Run, StudySession, Task } from '@/lib/types';
 import { IOS_PENDING_LIMIT, planNotifications } from '@/notifications/planner';
 import { courseWeek, statusFor, statusLabel } from '@/study/progress';
 import { evaluateGarden, stageFor, type TaskLogEntry } from '@/garden/plant';
+import {
+  formatDuration,
+  formatKm,
+  formatPace,
+  paceOf,
+  paceTrend,
+  parseDuration,
+  parseKm,
+  records,
+  runGoalChange,
+  runGoalFrom,
+  runGoalMiss,
+  runStatusLabel,
+  runWeek,
+  weeklyTotals,
+  type RunGoal,
+} from '@/running/stats';
 
 // Wednesday 2026-09-23 10:00 local time.
 const NOW = new Date(2026, 8, 23, 10, 0).getTime();
@@ -279,5 +296,102 @@ describe('evaluateGarden at install', () => {
       now: NOW,
     });
     expect(g).toMatchObject({ today: 'pending', wilted: false, streak: 0 });
+  });
+});
+
+describe('running stats', () => {
+  const run = (km: number, min: number, t: number): Run => ({ id: nextId++, distanceM: km * 1000, durationS: min * 60, at: t, note: '' });
+  const kmGoal: RunGoal = { kind: 'km', value: 15, setAt: at(9, 1, 9) };
+
+  it('formats and parses distances, durations and pace', () => {
+    expect(formatKm(5200)).toBe('5.2 km');
+    expect(formatKm(12345)).toBe('12.3 km');
+    expect(formatDuration(1530)).toBe('25:30');
+    expect(formatDuration(3723)).toBe('1:02:03');
+    expect(formatPace(paceOf({ distanceM: 5000, durationS: 1530 }))).toBe('5:06 /km');
+    expect(parseDuration('25:30')).toBe(1530);
+    expect(parseDuration('1:02:03')).toBe(3723);
+    expect(parseDuration('45')).toBe(2700);
+    expect(parseDuration('5:75')).toBeNull();
+    expect(parseKm('5,2 km')).toBe(5200);
+    expect(parseKm('abc')).toBeNull();
+  });
+
+  it('tracks the weekly goal in km and runs', () => {
+    const runs = [run(5, 28, at(9, 21, 7)), run(3, 18, at(9, 22, 7)), run(10, 60, at(9, 14, 7))];
+    expect(runWeek(runs, kmGoal, NOW)).toMatchObject({ done: 8, remaining: 7, daysLeft: 5, status: 'on-track', runs: 2 });
+    expect(runStatusLabel(runWeek(runs, kmGoal, NOW))).toBe('7 km left this week');
+    // Saturday: 7 km over 2 days is 3.5 km/day, under 15/3 = 5, so on track; 15 km over 2 days is behind.
+    expect(runWeek(runs, kmGoal, at(9, 26, 9)).status).toBe('on-track');
+    expect(runWeek([], kmGoal, at(9, 26, 9)).status).toBe('behind');
+    const runsGoal: RunGoal = { kind: 'runs', value: 3, setAt: 0 };
+    expect(runWeek(runs, runsGoal, at(9, 27, 9))).toMatchObject({ remaining: 1, daysLeft: 1, status: 'behind' });
+    expect(runWeek(runs, { kind: 'none', value: 0, setAt: 0 }, NOW).status).toBe('done');
+  });
+
+  it('reports a missed goal on Sunday only for weeks after the goal was set', () => {
+    const sunday = at(9, 27, 12);
+    expect(runGoalMiss([run(5, 30, at(9, 21, 7))], kmGoal, sunday)).toBe('Running goal missed (5.0/15 km)');
+    expect(runGoalMiss([run(16, 90, at(9, 21, 7))], kmGoal, sunday)).toBeNull();
+    expect(runGoalMiss([], { ...kmGoal, setAt: at(9, 23, 9) }, sunday)).toBeNull();
+  });
+
+  it('computes weekly totals, records and pace trend', () => {
+    const runs = [run(5, 30, at(9, 21, 7)), run(10, 55, at(9, 14, 7)), run(0.5, 2, at(9, 22, 7)), run(6, 33, at(8, 25, 7))];
+    const weeks = weeklyTotals(runs, NOW, 4);
+    expect(weeks.map((w) => [new Date(w.weekStart).getDate(), w.distanceM, w.runs])).toEqual([
+      [31, 0, 0],
+      [7, 0, 0],
+      [14, 10000, 1],
+      [21, 5500, 2],
+    ]);
+    const r = records(runs, NOW);
+    expect(r.longest?.distanceM).toBe(10000);
+    expect(r.fastest?.pace).toBeCloseTo(330); // 5:30 /km on the 10k and the 6k
+    expect(r.best5kS).toBeCloseTo(1650);
+    expect(r.totalRuns).toBe(4);
+    expect(r.monthDistanceM).toBe(15500);
+    expect(paceTrend(runs).map((p) => p.run.distanceM)).toEqual([6000, 10000, 5000]);
+  });
+
+  it('counts a run as watering the plant and fails Sunday on a missed running goal', () => {
+    const g = evaluateGarden({ log: [], tasks: [], sessions: [], courses: [], runs: [run(3, 20, at(9, 23, 7))], startedAt: at(9, 23, 6), now: NOW });
+    expect(g.today).toBe('kept');
+    const daily = [21, 22, 23, 24, 25, 26, 27].map((d) => run(1, 6, at(9, d, 7)));
+    const monday = evaluateGarden({ log: [], tasks: [], sessions: [], courses: [], runs: daily, runGoal: kmGoal, startedAt: at(9, 14, 8), now: at(9, 28, 10) });
+    expect(monday.reasons).toEqual(['Running goal missed (7.0/15 km)']);
+  });
+
+  it('nudges to run in the evening when behind', () => {
+    const settings = { digestHour: 8, digestMinute: 0, studyHour: 19, studyMinute: 0, plantHour: 21, plantMinute: 0 };
+    const plan = planNotifications({ tasks: [], courses: [], sessions: [], settings, now: NOW, runs: [], runGoal: kmGoal });
+    const nudges = plan.filter((p) => p.kind === 'run');
+    // 15 km over 5 days = 3/day, under 15/3 = 5 → not behind until 15/days > 5, i.e. from Saturday (2 days: 7.5).
+    expect(nudges.map((n) => new Date(n.date).getDate())).toEqual([26, 27]);
+    expect(plan.find((p) => p.kind === 'digest')!.body).toBe('15 km to run');
+  });
+});
+
+describe('running goal changes', () => {
+  const base = {
+    runGoalKind: 'km' as const,
+    runGoalValue: 15,
+    runGoalSetAt: at(9, 1, 9),
+    runGoalPrevKind: 'none' as const,
+    runGoalPrevValue: 0,
+    runGoalPrevSetAt: 0,
+  };
+
+  it('keeps the start date when nothing changed', () => {
+    expect(runGoalChange(base, 'km', 15, NOW)).toEqual({});
+  });
+
+  it('still judges the current week by the old goal after switching it off on Sunday', () => {
+    const sunday = at(9, 27, 20);
+    const patch = runGoalChange(base, 'none', 0, sunday);
+    const goal = runGoalFrom({ ...base, ...patch } as typeof base);
+    expect(runGoalMiss([], goal, sunday)).toBe('Running goal missed (0.0/15 km)');
+    // The following week is judged by the new (off) goal.
+    expect(runGoalMiss([], goal, at(10, 4, 20))).toBeNull();
   });
 });

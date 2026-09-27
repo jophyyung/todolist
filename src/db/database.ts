@@ -5,6 +5,8 @@ import {
   DEFAULT_SETTINGS,
   type Course,
   type CourseInput,
+  type Run,
+  type RunInput,
   type Settings,
   type StudySession,
   type Task,
@@ -12,7 +14,7 @@ import {
 } from '@/lib/types';
 
 export const DATABASE_NAME = 'todolist.db';
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -75,6 +77,19 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       CREATE INDEX task_log_due ON task_log (due_at);
     `);
     version = 3;
+  }
+  if (version === 3) {
+    await db.execAsync(`
+      CREATE TABLE runs (
+        id INTEGER PRIMARY KEY NOT NULL,
+        distance_m INTEGER NOT NULL,
+        duration_s INTEGER NOT NULL,
+        at INTEGER NOT NULL,
+        note TEXT NOT NULL DEFAULT ''
+      );
+      CREATE INDEX runs_at ON runs (at);
+    `);
+    version = 4;
   }
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
@@ -182,6 +197,28 @@ export async function insertSession(db: SQLiteDatabase, courseId: number, minute
 
 export async function deleteSession(db: SQLiteDatabase, id: number) {
   await db.runAsync('DELETE FROM study_sessions WHERE id = ?', id);
+}
+
+type RunRow = { id: number; distance_m: number; duration_s: number; at: number; note: string };
+
+export async function getRuns(db: SQLiteDatabase): Promise<Run[]> {
+  const rows = await db.getAllAsync<RunRow>('SELECT * FROM runs ORDER BY at DESC');
+  return rows.map((r) => ({ id: r.id, distanceM: r.distance_m, durationS: r.duration_s, at: r.at, note: r.note }));
+}
+
+export async function insertRun(db: SQLiteDatabase, r: RunInput) {
+  await db.runAsync('INSERT INTO runs (distance_m, duration_s, at, note) VALUES (?, ?, ?, ?)', r.distanceM, r.durationS, r.at, r.note);
+}
+
+export async function updateRun(db: SQLiteDatabase, id: number, r: RunInput) {
+  await db.runAsync(
+    'UPDATE runs SET distance_m = ?, duration_s = ?, at = ?, note = ? WHERE id = ?',
+    r.distanceM, r.durationS, r.at, r.note, id,
+  );
+}
+
+export async function deleteRun(db: SQLiteDatabase, id: number) {
+  await db.runAsync('DELETE FROM runs WHERE id = ?', id);
 }
 
 type LogRow = { id: number; task_id: number; title: string; due_at: number | null; done_at: number | null; kind: string };

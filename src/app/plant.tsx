@@ -11,9 +11,9 @@ import { useGarden } from '@/garden/use-garden';
 import { useTheme } from '@/hooks/use-theme';
 
 const RULES: { icon: 'drop.fill' | 'clock.fill' | 'graduationcap.fill' | 'trash.fill'; text: string }[] = [
-  { icon: 'drop.fill', text: 'Water it every day: complete at least one task or log a study session.' },
+  { icon: 'drop.fill', text: 'Water it every day: complete a task, or log a study session or a run.' },
   { icon: 'clock.fill', text: 'Every task with a due time must be ticked off before that time. Late counts as missed.' },
-  { icon: 'graduationcap.fill', text: 'By the end of Sunday, every course must reach its weekly goal.' },
+  { icon: 'graduationcap.fill', text: 'By the end of Sunday, every course and your running goal must be met.' },
   { icon: 'trash.fill', text: 'Deleting a task after it’s overdue still counts as missing it.' },
 ];
 

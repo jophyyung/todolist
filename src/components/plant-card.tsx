@@ -48,7 +48,7 @@ export function statusLine(g: Garden): { text: string; tone: 'success' | 'warnin
   if (g.today === 'broken') return { text: g.reasons[0] ?? 'A task was missed today', tone: 'danger' };
   if (g.today === 'kept') return { text: 'Watered today', tone: 'success' };
   if (g.wilted) return { text: g.reasons[0] ?? 'Yesterday was missed', tone: 'danger' };
-  return { text: 'Needs water: finish a task or log study today', tone: 'warning' };
+  return { text: 'Needs water: finish a task, study or run today', tone: 'warning' };
 }
 
 export function PlantCard({ garden }: { garden: Garden }) {

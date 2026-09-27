@@ -1,5 +1,6 @@
 import { addDays, startOfDay, startOfWeek } from '@/lib/dates';
-import type { Course, StudySession, Task } from '@/lib/types';
+import type { Course, Run, StudySession, Task } from '@/lib/types';
+import { runGoalMiss, type RunGoal } from '@/running/stats';
 
 /** One record per completion (repeating tasks included) or per overdue task deleted. */
 export type TaskLogEntry = {
@@ -37,6 +38,8 @@ type Input = {
   tasks: Task[];
   sessions: StudySession[];
   courses: Course[];
+  runs?: Run[];
+  runGoal?: RunGoal;
   /** When the plant was planted; earlier days aren't judged. */
   startedAt: number;
   now: number;
@@ -58,11 +61,11 @@ export type Garden = {
 const HISTORY_DAYS = 14;
 
 /**
- * Strict rules: a day is kept only if something was done (a task completed or study logged)
- * and every task due that day was completed on time. On Sundays every course must also
- * have met its weekly goal. Deleting an overdue task counts as missing it.
+ * Strict rules: a day is kept only if something was done (a task completed, study or a run
+ * logged) and every task due that day was completed on time. On Sundays every course and the
+ * running goal must also have been met. Deleting an overdue task counts as missing it.
  */
-export function evaluateGarden({ log, tasks, sessions, courses, startedAt, now }: Input): Garden {
+export function evaluateGarden({ log, tasks, sessions, courses, runs = [], runGoal, startedAt, now }: Input): Garden {
   const today = startOfDay(now);
   const start = startOfDay(startedAt);
   const inDay = (t: number | null, day: number) => t != null && t >= day && t < addDays(day, 1);
@@ -87,16 +90,20 @@ export function evaluateGarden({ log, tasks, sessions, courses, startedAt, now }
     const week = startOfWeek(day);
     if (week < start) return [];
     const weekEnd = addDays(week, 7);
-    return courses
+    const courseMisses = courses
       .filter((c) => c.createdAt < week)
       .flatMap((c) => {
         const done = sessions.filter((s) => s.courseId === c.id && s.at >= week && s.at < weekEnd).length;
         return done < c.weeklyTarget ? [`${c.name} weekly goal missed (${done}/${c.weeklyTarget})`] : [];
       });
+    const runMiss = runGoal ? runGoalMiss(runs, runGoal, day) : null;
+    return runMiss ? [...courseMisses, runMiss] : courseMisses;
   }
 
   const active = (day: number) =>
-    log.some((e) => e.kind === 'done' && inDay(e.doneAt, day)) || sessions.some((s) => inDay(s.at, day));
+    log.some((e) => e.kind === 'done' && inDay(e.doneAt, day)) ||
+    sessions.some((s) => inDay(s.at, day)) ||
+    runs.some((r) => inDay(r.at, day));
 
   function judgePast(day: number): { state: DayState; reasons: string[] } {
     const reasons = [...misses(day, Infinity), ...weeklyMisses(day)];

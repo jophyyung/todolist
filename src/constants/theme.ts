@@ -19,6 +19,8 @@ export const Colors = {
     textTertiary: '#A1A1A8',
     accent: '#208AEF',
     accentSoft: '#E4F1FE',
+    /** Single-series chart marks (validated against light and dark surfaces). */
+    chart: '#208AEF',
     onAccent: '#ffffff',
     danger: '#E5484D',
     dangerSoft: '#FDECEC',
@@ -37,6 +39,7 @@ export const Colors = {
     textTertiary: '#6C6C72',
     accent: '#3B9EFF',
     accentSoft: '#12283F',
+    chart: '#2F90F0',
     onAccent: '#ffffff',
     danger: '#FF6369',
     dangerSoft: '#3B1719',

@@ -22,6 +22,17 @@ export default function RootLayout() {
               <Stack.Screen name="task/[id]" options={{ presentation: 'modal', title: 'Task' }} />
               <Stack.Screen name="plant" options={{ title: 'Your plant', headerBackTitle: 'Today' }} />
               <Stack.Screen name="course/[id]" options={{ presentation: 'modal', title: 'Course' }} />
+              <Stack.Screen name="run/[id]" options={{ presentation: 'modal', title: 'Run' }} />
+              <Stack.Screen
+                name="run-goal"
+                options={{
+                  presentation: 'formSheet',
+                  sheetAllowedDetents: [0.55],
+                  sheetGrabberVisible: true,
+                  sheetCornerRadius: 24,
+                  headerShown: false,
+                }}
+              />
               <Stack.Screen
                 name="log/[courseId]"
                 options={{

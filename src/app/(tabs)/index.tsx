@@ -16,6 +16,7 @@ import { useNow } from '@/hooks/use-now';
 import { useTheme } from '@/hooks/use-theme';
 import { addDays, groupTasks, startOfDay, type SectionKey } from '@/lib/dates';
 import type { Task } from '@/lib/types';
+import { runGoalFrom, runStatusLabel, runWeek } from '@/running/stats';
 import { courseWeek, statusLabel } from '@/study/progress';
 
 const UPCOMING_PREVIEW = 5;
@@ -30,7 +31,7 @@ function greeting(now: number) {
 
 export default function TodayScreen() {
   const theme = useTheme();
-  const { tasks, courses, sessions, notificationsAllowed, requestNotifications } = useData();
+  const { tasks, courses, sessions, runs, settings, notificationsAllowed, requestNotifications } = useData();
   const now = useNow();
   const garden = useGarden();
   const [showAllUpcoming, setShowAllUpcoming] = useState(false);
@@ -48,6 +49,8 @@ export default function TodayScreen() {
   const doneToday = tasks.filter((t) => t.completedAt != null && t.completedAt >= dayStart).length;
   const todayTotal = overdue.length + today.length + doneToday;
   const behind = courses.map((c) => courseWeek(c, sessions, now)).filter((w) => w.status === 'behind');
+  const runW = runWeek(runs, runGoalFrom(settings), now);
+  const runBehind = runW.status === 'behind';
 
   const dateLabel = new Date(now).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
   const nothingAtAll = tasks.length === 0;
@@ -108,10 +111,27 @@ export default function TodayScreen() {
             </Card>
           )}
 
-          {behind.length > 0 && (
+          {(behind.length > 0 || runBehind) && (
             <>
-              <SectionTitle color="warning">Study this week</SectionTitle>
+              <SectionTitle color="warning">Behind this week</SectionTitle>
               <Card>
+                {runBehind && (
+                  <Pressable
+                    onPress={() => router.push({ pathname: '/run/[id]', params: { id: 'new' } })}
+                    style={({ pressed }) => [styles.studyRow, pressed && { backgroundColor: theme.backgroundSelected }]}>
+                    <SymbolView name="figure.run" size={20} tintColor={theme.warning} style={{ width: 26 }} />
+                    <View style={{ flex: 1 }}>
+                      <ThemedText style={{ fontWeight: 600 }}>Running</ThemedText>
+                      <ThemedText type="small" style={{ color: theme.warning, fontSize: 13 }}>
+                        {runStatusLabel(runW)}
+                      </ThemedText>
+                    </View>
+                    <ThemedText type="smallBold" style={{ color: theme.accent }}>
+                      Log
+                    </ThemedText>
+                  </Pressable>
+                )}
+                {runBehind && behind.length > 0 && <Divider inset={TASK_ROW_INSET} />}
                 {behind.map((w, i) => (
                   <Fragment key={w.course.id}>
                     {i > 0 && <Divider inset={TASK_ROW_INSET} />}

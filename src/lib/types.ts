@@ -35,6 +35,20 @@ export type StudySession = {
   at: number;
 };
 
+export type Run = {
+  id: number;
+  distanceM: number;
+  durationS: number;
+  /** When the run happened. */
+  at: number;
+  note: string;
+};
+
+export type RunInput = Omit<Run, 'id'>;
+
+/** Weekly running goal: kilometres or number of runs, Mon–Sun. */
+export type RunGoalKind = 'none' | 'km' | 'runs';
+
 export type Settings = {
   digestHour: number;
   digestMinute: number;
@@ -46,6 +60,14 @@ export type Settings = {
   plantMinute: number;
   /** When the plant was planted (first launch with the garden); 0 = not yet. */
   plantStartedAt: number;
+  runGoalKind: RunGoalKind;
+  runGoalValue: number;
+  /** When the running goal was last changed; weeks that began earlier aren't judged. */
+  runGoalSetAt: number;
+  /** The goal before the last change; it still judges the week the change was made in. */
+  runGoalPrevKind: RunGoalKind;
+  runGoalPrevValue: number;
+  runGoalPrevSetAt: number;
   defaultReminders: number[];
 };
 
@@ -57,6 +79,12 @@ export const DEFAULT_SETTINGS: Settings = {
   plantHour: 21,
   plantMinute: 0,
   plantStartedAt: 0,
+  runGoalKind: 'none',
+  runGoalValue: 10,
+  runGoalSetAt: 0,
+  runGoalPrevKind: 'none',
+  runGoalPrevValue: 0,
+  runGoalPrevSetAt: 0,
   defaultReminders: [0, 15],
 };
 
