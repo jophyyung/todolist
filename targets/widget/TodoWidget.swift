@@ -32,12 +32,55 @@ struct Snapshot: Decodable {
   let study: [StudyItem]
   let plant: PlantInfo
 
+  /// Reads the newest snapshot from any App Group the widget can see. Sideloading tools rename the
+  /// group when re-signing (e.g. AltStore appends the team ID), so the name in app.json may not be the real one.
   static func load() -> Snapshot? {
+    var best: Snapshot?
+    for group in candidateGroups() {
+      guard
+        let json = UserDefaults(suiteName: group)?.string(forKey: "snapshot"),
+        let data = json.data(using: .utf8),
+        let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data)
+      else { continue }
+      if best == nil || snapshot.updatedAt > best!.updatedAt { best = snapshot }
+    }
+    return best
+  }
+
+  /// Keep in step with appGroupCandidates in src/widget/app-group.ts.
+  static func candidateGroups() -> [String] {
+    var groups = groupsInProfile().filter { $0.hasPrefix(appGroup) }
+    let baseBundle = "com.jophy.todolist"
+    if var appId = Bundle.main.bundleIdentifier {
+      if appId.hasSuffix(".widget") { appId = String(appId.dropLast(".widget".count)) }
+      if appId != baseBundle {
+        if appId.hasPrefix(baseBundle + ".") { groups.append(appGroup + String(appId.dropFirst(baseBundle.count))) }
+        groups.append("group." + appId)
+      }
+    }
+    groups.append(appGroup)
+    var seen = Set<String>()
+    return groups.filter { seen.insert($0).inserted }
+  }
+
+  /// App Groups granted by this extension's provisioning profile.
+  static func groupsInProfile() -> [String] {
     guard
-      let json = UserDefaults(suiteName: appGroup)?.string(forKey: "snapshot"),
-      let data = json.data(using: .utf8)
-    else { return nil }
-    return try? JSONDecoder().decode(Snapshot.self, from: data)
+      let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+      let data = try? Data(contentsOf: url),
+      let text = String(data: data, encoding: .isoLatin1),
+      let keyRange = text.range(of: "<key>com.apple.security.application-groups</key>"),
+      let arrayEnd = text.range(of: "</array>", range: keyRange.upperBound..<text.endIndex)
+    else { return [] }
+    let block = String(text[keyRange.upperBound..<arrayEnd.lowerBound])
+    var result: [String] = []
+    for part in block.components(separatedBy: "<string>").dropFirst() {
+      if let end = part.range(of: "</string>") {
+        let value = part[part.startIndex..<end.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("group.") { result.append(value) }
+      }
+    }
+    return result
   }
 
   static let sample = Snapshot(

@@ -5,6 +5,7 @@ import type { Course, Run, StudySession, Task } from '@/lib/types';
 import { IOS_PENDING_LIMIT, planNotifications } from '@/notifications/planner';
 import { courseWeek, statusFor, statusLabel } from '@/study/progress';
 import { evaluateGarden, stageFor, type TaskLogEntry } from '@/garden/plant';
+import { appGroupCandidates, groupsInProfile, latin1 } from '@/widget/app-group';
 import {
   formatDuration,
   formatKm,
@@ -393,5 +394,32 @@ describe('running goal changes', () => {
     expect(runGoalMiss([], goal, sunday)).toBe('Running goal missed (0.0/15 km)');
     // The following week is judged by the new (off) goal.
     expect(runGoalMiss([], goal, at(10, 4, 20))).toBeNull();
+  });
+});
+
+describe('widget app group discovery', () => {
+  const profile = `garbage\u0000<plist><dict><key>Entitlements</key><dict>
+    <key>application-identifier</key><string>XFS2MURF6G.com.jophy.todolist.XFS2MURF6G</string>
+    <key>com.apple.security.application-groups</key>
+    <array>
+      <string>group.com.jophy.todolist.XFS2MURF6G</string>
+    </array></dict></dict></plist>ÿ`;
+
+  it('reads app groups out of a provisioning profile', () => {
+    expect(groupsInProfile(profile)).toEqual(['group.com.jophy.todolist.XFS2MURF6G']);
+    expect(groupsInProfile('no entitlements here')).toEqual([]);
+  });
+
+  it('orders candidates: profile groups, renamed-bundle guess, then the original', () => {
+    expect(appGroupCandidates(['group.com.jophy.todolist.XFS2MURF6G'], 'com.jophy.todolist.XFS2MURF6G')).toEqual([
+      'group.com.jophy.todolist.XFS2MURF6G',
+      'group.com.jophy.todolist',
+    ]);
+    expect(appGroupCandidates([], 'com.jophy.todolist')).toEqual(['group.com.jophy.todolist']);
+    expect(appGroupCandidates([], 'com.other.app')).toEqual(['group.com.other.app', 'group.com.jophy.todolist']);
+  });
+
+  it('decodes bytes as Latin-1 without choking on binary', () => {
+    expect(latin1(new Uint8Array([0x3c, 0x61, 0x3e, 0xff, 0x00]))).toBe('<a>ÿ\u0000');
   });
 });

@@ -12,6 +12,7 @@ import { useData } from '@/data/DataProvider';
 import { useNow } from '@/hooks/use-now';
 import { useTheme } from '@/hooks/use-theme';
 import { atTime, formatReminder } from '@/lib/dates';
+import { widgetDiagnostics } from '@/widget/sync';
 
 const REMINDER_OPTIONS = [0, 15, 60, 1440];
 
@@ -20,6 +21,7 @@ export default function SettingsScreen() {
   const { settings, updateSettings, notificationsAllowed, requestNotifications, tasks, courses, sessions } = useData();
   const [pending, setPending] = useState<number | null>(null);
   const [testSent, setTestSent] = useState(false);
+  const [widget] = useState(widgetDiagnostics);
   const now = useNow(60 * 60_000);
 
   useEffect(() => {
@@ -138,6 +140,26 @@ export default function SettingsScreen() {
                 );
               })}
             </View>
+          </Card>
+
+          <SectionTitle>Lock-screen widget</SectionTitle>
+          <Card style={[styles.padded, { gap: 4 }]}>
+            {!widget.available ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                Only works in the installed app (not in Expo Go).
+              </ThemedText>
+            ) : (
+              <>
+                <ThemedText type="small">
+                  {widget.fromProfile.length
+                    ? `Shared storage: ${widget.fromProfile.join(', ')}`
+                    : 'No shared storage found in the app signature. The widget may stay empty.'}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textTertiary" style={{ fontSize: 12 }}>
+                  Writing to: {widget.groups.join(', ')}
+                </ThemedText>
+              </>
+            )}
           </Card>
         </View>
       </ScrollView>
