@@ -74,6 +74,18 @@ jobs:
       - name: Package .ipa
         run: |
           APP=$(ls -d build/Build/Products/Release-iphoneos/*.app | head -1)
+          # Report what got embedded, so problems are visible on the run summary.
+          APP_MIN=$(/usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$APP/Info.plist")
+          if ls "$APP"/PlugIns/*.appex >/dev/null 2>&1; then
+            for EXT in "$APP"/PlugIns/*.appex; do
+              EXT_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$EXT/Info.plist")
+              EXT_MIN=$(/usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$EXT/Info.plist")
+              EXT_POINT=$(/usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$EXT/Info.plist" 2>/dev/null || echo none)
+              echo "::notice title=Extension::$(basename "$EXT") id=$EXT_ID point=$EXT_POINT minOS=$EXT_MIN (app minOS=$APP_MIN)"
+            done
+          else
+            echo "::warning title=Extension::No app extensions embedded in $(basename "$APP") (app minOS=$APP_MIN)"
+          fi
           mkdir -p dist/Payload
           cp -R "$APP" dist/Payload/
           cd dist && zip -qr ToDo.ipa Payload
